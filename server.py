@@ -6,9 +6,14 @@ import os
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+from dotenv import load_dotenv
+
+load_dotenv() # This loads the .env file
+api_key = os.getenv("GOOGLE_API_KEY") # This reads the key safely
+
 # Configure Gemini
-genai.configure(api_key="YOUR_API_KEY")
-model = genai.GenerativeModel('gemini-1.5-flash')
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 @app.route('/')
 def index():
