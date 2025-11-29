@@ -19,18 +19,17 @@
     </div>
     <div id="captions">Waiting for speech...</div>
 
-    <script>
+   <script>
         const socket = io();
         const myVideo = document.getElementById('my-video');
         const userVideo = document.getElementById('user-video');
+        const captionsDiv = document.getElementById('captions'); // Get the caption box
 
-        // 1. Setup Video (PeerJS handles the hard WebRTC parts)
-        const peer = new Peer(); // Auto-connects to PeerJS cloud server (free)
+        const peer = new Peer();
 
         navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
             myVideo.srcObject = stream;
 
-            // Answer calls
             peer.on('call', call => {
                 call.answer(stream);
                 call.on('stream', userVideoStream => {
@@ -38,7 +37,6 @@
                 });
             });
 
-            // Make calls (Simplification: connect to any new user)
             socket.on('user-connected', userId => {
                 const call = peer.call(userId, stream);
                 call.on('stream', userVideoStream => {
@@ -46,21 +44,46 @@
                 });
             });
 
-            // 2. The AI Hack (Web Speech API -> Python -> Gemini)
-            // This is WAY faster to build than processing raw audio bytes
-            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'en-US'; 
+            // --- SPEECH RECOGNITION FIX ---
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            if (SpeechRecognition) {
+                const recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true; // This is crucial
+                recognition.lang = 'en-US';
 
-            recognition.onresult = (event) => {
-                const transcript = event.results[event.results.length - 1][0].transcript;
-                if (event.results[event.results.length - 1].isFinal) {
-                    // Send text to backend for Gemini translation
-                    socket.emit('audio-chunk', { text: transcript, target_lang: 'Spanish' });
-                }
-            };
-            recognition.start();
+                recognition.onstart = () => {
+                    captionsDiv.innerText = "🔴 Listening... (Speak now)";
+                };
+
+                recognition.onresult = (event) => {
+                    const current = event.resultIndex;
+                    const transcript = event.results[current][0].transcript;
+                    
+                    // 1. SHOW WHAT YOU ARE SAYING LIVE (Grey text)
+                    if (!event.results[current].isFinal) {
+                        captionsDiv.style.color = '#888'; // Grey for "thinking"
+                        captionsDiv.innerText = transcript + "...";
+                    } 
+                    
+                    // 2. SEND WHEN DONE (Yellow text)
+                    else {
+                        captionsDiv.style.color = 'yellow';
+                        captionsDiv.innerText = "🎤 Sending: " + transcript;
+                        socket.emit('audio-chunk', { text: transcript, target_lang: 'Spanish' });
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    console.error("Speech Error:", event.error);
+                    captionsDiv.innerText = "❌ Error: " + event.error;
+                };
+
+                recognition.start();
+            } else {
+                alert("This browser does not support Speech API. Please use Google Chrome.");
+            }
         });
 
         peer.on('open', id => {
@@ -68,8 +91,8 @@
         });
 
         socket.on('translation-result', data => {
-            document.getElementById('captions').innerText = 
-                `${data.original} -> ${data.translated}`;
+            // Show the result in Blue/Green
+            captionsDiv.innerHTML = `<span style="color: #aaa">${data.original}</span> <br/> <span style="color: #4af; font-size:30px">➤ ${data.translated}</span>`;
         });
     </script>
 </body>
