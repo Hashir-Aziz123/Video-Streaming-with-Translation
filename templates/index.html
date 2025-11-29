@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal AI Video</title>
+    <style>
+        body { background: #111; color: white; display: flex; flex-direction: column; align-items: center; }
+        #video-grid { display: flex; gap: 10px; }
+        video { width: 400px; height: 300px; background: black; border: 1px solid #333; }
+        #captions { font-size: 24px; color: yellow; margin-top: 20px; font-family: sans-serif; }
+    </style>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <h2>Gemini Video Call</h2>
+    <div id="video-grid">
+        <video id="my-video" muted autoplay playsinline></video>
+        <video id="user-video" autoplay playsinline></video>
+    </div>
+    <div id="captions">Waiting for speech...</div>
+
+    <script>
+        const socket = io();
+        const myVideo = document.getElementById('my-video');
+        const userVideo = document.getElementById('user-video');
+
+        // 1. Setup Video (PeerJS handles the hard WebRTC parts)
+        const peer = new Peer(); // Auto-connects to PeerJS cloud server (free)
+
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
+            myVideo.srcObject = stream;
+
+            // Answer calls
+            peer.on('call', call => {
+                call.answer(stream);
+                call.on('stream', userVideoStream => {
+                    userVideo.srcObject = userVideoStream;
+                });
+            });
+
+            // Make calls (Simplification: connect to any new user)
+            socket.on('user-connected', userId => {
+                const call = peer.call(userId, stream);
+                call.on('stream', userVideoStream => {
+                    userVideo.srcObject = userVideoStream;
+                });
+            });
+
+            // 2. The AI Hack (Web Speech API -> Python -> Gemini)
+            // This is WAY faster to build than processing raw audio bytes
+            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US'; 
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[event.results.length - 1][0].transcript;
+                if (event.results[event.results.length - 1].isFinal) {
+                    // Send text to backend for Gemini translation
+                    socket.emit('audio-chunk', { text: transcript, target_lang: 'Spanish' });
+                }
+            };
+            recognition.start();
+        });
+
+        peer.on('open', id => {
+            socket.emit('join-room', { userId: id });
+        });
+
+        socket.on('translation-result', data => {
+            document.getElementById('captions').innerText = 
+                `${data.original} -> ${data.translated}`;
+        });
+    </script>
+</body>
+</html>
