@@ -1,6 +1,6 @@
 import google.generativeai as genai
 from typing import Optional
-from backend.config import Config
+from config import Config
 
 class TranslationService:
     def __init__(self):

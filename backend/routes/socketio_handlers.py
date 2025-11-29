@@ -1,8 +1,8 @@
 from flask_socketio import emit, join_room, leave_room
 from flask import request
-from backend.services import TranslationService
-from backend.services.room_service import room_service
-from backend.database import Recording, Room
+from services import TranslationService
+from services.room_service import room_service
+from database import Recording, Room
 import base64
 
 translation_service = TranslationService()

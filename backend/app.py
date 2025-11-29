@@ -1,8 +1,8 @@
 from flask import Flask
 from flask_socketio import SocketIO
 from flask_cors import CORS
-from backend.config import Config
-from backend.routes import register_socketio_handlers
+from config import Config
+from routes import register_socketio_handlers
 import os
 
 def create_app():
