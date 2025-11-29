@@ -1,39 +1,230 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Minimal AI Video</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Live Video</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    
     <style>
-        body { background: #111; color: white; display: flex; flex-direction: column; align-items: center; }
-        #video-grid { display: flex; gap: 10px; }
-        video { width: 400px; height: 300px; background: black; border: 1px solid #333; }
-        #captions { font-size: 24px; color: yellow; margin-top: 20px; font-family: sans-serif; }
+        /* 1. RESET & BASE */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: #0f0f11; /* Almost black */
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        /* 2. LAYOUT */
+        header { margin-bottom: 20px; text-align: center; z-index: 10; }
+        h2 { 
+            font-weight: 800; font-size: 1.5rem; 
+            background: linear-gradient(to right, #4facfe, #00f2fe); 
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .status { font-size: 0.85rem; color: #666; margin-top: 5px; }
+
+        /* 3. VIDEO GRID (Portrait Mode) */
+        #video-grid {
+            display: flex;
+            gap: 30px;
+            width: 100%;
+            justify-content: center;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        /* THE VIDEO CONTAINER */
+        .video-card {
+            position: relative;
+            width: 360px;  /* Bigger width */
+            height: 640px; /* 9:16 Portrait Ratio */
+            background: #1a1a1a;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: transform 0.3s ease;
+        }
+        
+        .video-card:hover { transform: translateY(-5px); }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Fills the portrait box */
+        }
+
+        /* 4. OVERLAYS (Name & Wave) */
+        .overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .user-tag {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            align-self: flex-start;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* 5. AUDIO WAVE ANIMATION (The Podcast Effect) */
+        .audio-wave {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 30px;
+        }
+        .bar {
+            width: 6px;
+            background: #4facfe;
+            border-radius: 4px;
+            height: 5px; /* Default low height */
+            transition: height 0.1s ease;
+        }
+        
+        /* 6. CAPTIONS PILL */
+        #captions-float {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 600px;
+            background: rgba(20, 20, 20, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50px;
+            padding: 15px 30px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+        
+        .trans-original { display: block; color: #888; font-size: 0.9rem; margin-bottom: 2px;}
+        .trans-translated { color: #fff; font-size: 1.2rem; font-weight: 600; line-height: 1.4;}
+        .trans-translated.highlight { color: #4facfe; }
+
     </style>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
 <body>
-    <h2>Gemini Video Call</h2>
-    <div id="video-grid">
-        <video id="my-video" muted autoplay playsinline></video>
-        <video id="user-video" autoplay playsinline></video>
-    </div>
-    <div id="captions">Waiting for speech...</div>
 
-   <script>
+    <header>
+        <h2>Gemini Connect</h2>
+        <div class="status" id="status">Waiting for connection...</div>
+    </header>
+
+    <div id="video-grid">
+        <div class="video-card">
+            <video id="my-video" muted autoplay playsinline></video>
+            <div class="overlay">
+                <div class="user-tag">You (Host)</div>
+                <div class="audio-wave" id="wave-me">
+                    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                    <div class="bar"></div><div class="bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="video-card">
+            <video id="user-video" autoplay playsinline></video>
+            <div class="overlay">
+                <div class="user-tag">Partner (Guest)</div>
+                <div class="audio-wave" id="wave-partner">
+                    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                    <div class="bar"></div><div class="bar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="captions-float">
+        <span class="trans-original">Listening for speech...</span>
+        <div class="trans-translated">Ready to translate</div>
+    </div>
+
+    <script>
         const socket = io();
         const myVideo = document.getElementById('my-video');
         const userVideo = document.getElementById('user-video');
-        const captionsDiv = document.getElementById('captions'); // Get the caption box
+        const statusText = document.getElementById('status');
+        const captionBox = document.getElementById('captions-float');
 
+        // AUDIO CONTEXT for Visualizers
+        let audioCtx;
+        
+        function initAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // VISUALIZER FUNCTION
+        function attachVisualizer(stream, elementId) {
+            initAudioContext();
+            const source = audioCtx.createMediaStreamSource(stream);
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 32; // Low detail is fine for bars
+            source.connect(analyser);
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            const container = document.getElementById(elementId);
+            const bars = container.querySelectorAll('.bar');
+
+            function animate() {
+                analyser.getByteFrequencyData(dataArray);
+                
+                // We only have 5 bars, so we sample the data array
+                // The dataArray has values 0-255 (Volume level)
+                
+                bars.forEach((bar, index) => {
+                    // Grab a value from the low-mid frequency range
+                    const value = dataArray[index + 2]; 
+                    // Scale it to a height (0 to 60px)
+                    const height = Math.max(5, (value / 255) * 60); 
+                    bar.style.height = `${height}px`;
+                });
+
+                requestAnimationFrame(animate);
+            }
+            animate();
+        }
+
+        // --- CORE VIDEO LOGIC ---
         const peer = new Peer();
 
         navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
             myVideo.srcObject = stream;
+            
+            // Attach visualizer to MY stream
+            attachVisualizer(stream, 'wave-me');
 
             peer.on('call', call => {
                 call.answer(stream);
                 call.on('stream', userVideoStream => {
                     userVideo.srcObject = userVideoStream;
+                    statusText.innerText = "🟢 Connected!";
+                    // Attach visualizer to PARTNER stream
+                    attachVisualizer(userVideoStream, 'wave-partner');
                 });
             });
 
@@ -41,48 +232,38 @@
                 const call = peer.call(userId, stream);
                 call.on('stream', userVideoStream => {
                     userVideo.srcObject = userVideoStream;
+                    statusText.innerText = "🟢 Connected!";
+                    // Attach visualizer to PARTNER stream
+                    attachVisualizer(userVideoStream, 'wave-partner');
                 });
             });
 
-            // --- SPEECH RECOGNITION FIX ---
+            // --- GEMINI SPEECH ---
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
             if (SpeechRecognition) {
                 const recognition = new SpeechRecognition();
                 recognition.continuous = true;
-                recognition.interimResults = true; // This is crucial
+                recognition.interimResults = true;
                 recognition.lang = 'en-US';
-
-                recognition.onstart = () => {
-                    captionsDiv.innerText = "🔴 Listening... (Speak now)";
-                };
 
                 recognition.onresult = (event) => {
                     const current = event.resultIndex;
                     const transcript = event.results[current][0].transcript;
                     
-                    // 1. SHOW WHAT YOU ARE SAYING LIVE (Grey text)
                     if (!event.results[current].isFinal) {
-                        captionsDiv.style.color = '#888'; // Grey for "thinking"
-                        captionsDiv.innerText = transcript + "...";
-                    } 
-                    
-                    // 2. SEND WHEN DONE (Yellow text)
-                    else {
-                        captionsDiv.style.color = 'yellow';
-                        captionsDiv.innerText = "🎤 Sending: " + transcript;
+                        captionBox.innerHTML = `
+                            <span class="trans-original" style="color:#aaa">${transcript}...</span>
+                            <div class="trans-translated" style="opacity:0.5">...</div>
+                        `;
+                    } else {
+                        captionBox.innerHTML = `
+                            <span class="trans-original" style="color:#fbbf24">🎤 Sending to Gemini...</span>
+                            <div class="trans-translated">${transcript}</div>
+                        `;
                         socket.emit('audio-chunk', { text: transcript, target_lang: 'Spanish' });
                     }
                 };
-
-                recognition.onerror = (event) => {
-                    console.error("Speech Error:", event.error);
-                    captionsDiv.innerText = "❌ Error: " + event.error;
-                };
-
                 recognition.start();
-            } else {
-                alert("This browser does not support Speech API. Please use Google Chrome.");
             }
         });
 
@@ -91,9 +272,20 @@
         });
 
         socket.on('translation-result', data => {
-            // Show the result in Blue/Green
-            captionsDiv.innerHTML = `<span style="color: #aaa">${data.original}</span> <br/> <span style="color: #4af; font-size:30px">➤ ${data.translated}</span>`;
+            captionBox.innerHTML = `
+                <span class="trans-original">${data.original}</span>
+                <div class="trans-translated highlight">${data.translated}</div>
+            `;
         });
+
+        // Browsers block AudioContext until user clicks. 
+        // This unlocks it on the first click anywhere.
+        document.body.addEventListener('click', () => {
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        });
+
     </script>
 </body>
 </html>

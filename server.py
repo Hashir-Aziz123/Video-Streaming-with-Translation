@@ -1,42 +1,83 @@
+import os
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 import google.generativeai as genai
-import os
-
-app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
-
 from dotenv import load_dotenv
 
-load_dotenv() # This loads the .env file
-api_key = os.getenv("GOOGLE_API_KEY") # This reads the key safely
+# 1. Setup
+load_dotenv()
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'secret!'
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Configure Gemini
+api_key = os.getenv("GOOGLE_API_KEY")
+
+# 2. Configure Gemini for SPEED
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-2.5-flash')
+
+generation_config = {
+    "temperature": 0.0,          # Zero creativity = Faster, direct answers
+    "max_output_tokens": 50,     # Cuts off long explanations instantly
+}
+
+# We use 'gemini-2.0-flash' because you confirmed this exists in your list
+model = genai.GenerativeModel(
+    model_name='gemini-2.0-flash', 
+    generation_config=generation_config
+)
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# 1. Signaling for Video (Pass-through)
+# 3. Signaling (Video)
 @socketio.on('join-room')
 def handle_join(data):
     emit('user-connected', data['userId'], broadcast=True, include_self=False)
 
-# 2. The AI Translation Handler
+# 4. The AI Translation (Optimized)
 @socketio.on('audio-chunk')
 def handle_audio(data):
-    # In a real 3-hour hack, sending raw audio is risky. 
-    # FASTER HACK: Send text from browser SpeechRecognition, translate here.
-    # If you MUST do audio: You need to accumulate chunks and send to Gemini.
-
-    # Simpler Path for < 3 hours: Text-to-Text Translation
     text = data.get('text')
     target_lang = data.get('target_lang', 'Spanish')
+    
+    if not text:
+        return
 
-    response = model.generate_content(f"Translate this to {target_lang}: {text}")
-    emit('translation-result', {'original': text, 'translated': response.text})
+    print(f"🎤 Input: {text}")
+
+    # FEW-SHOT PROMPT:
+    # We give examples so it knows strictly to translate, not explain.
+    prompt = f"""
+    Task: Translate to {target_lang}.
+    Rule: Return ONLY the translated text. No notes.
+
+    Examples:
+    Input: Hello there
+    Output: Hola
+    Input: How are you doing?
+    Output: ¿Cómo estás?
+    
+    Input: {text}
+    Output:"""
+
+    try:
+        response = model.generate_content(prompt)
+        translated_text = response.text.strip()
+        
+        # Send result back
+        emit('translation-result', {
+            'original': text, 
+            'translated': translated_text
+        }, broadcast=True)
+        
+    except Exception as e:
+        print(f"❌ Gemini Error: {e}")
+        # Fallback in case of error so the UI doesn't freeze
+        emit('translation-result', {
+            'original': text, 
+            'translated': "..."
+        }, broadcast=True)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, port=5000)
