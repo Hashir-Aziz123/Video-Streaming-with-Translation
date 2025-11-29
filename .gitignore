@@ -1,2 +1,11 @@
 venv/
 .env
+node_modules/
+__pycache__/
+*.pyc
+dist/
+.vscode/
+*.log
+*.db
+backend/database/*.db
+frontend/.env.local
