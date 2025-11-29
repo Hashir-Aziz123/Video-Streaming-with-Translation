@@ -4,6 +4,10 @@ from flask_cors import CORS
 from config import Config
 from routes import register_socketio_handlers
 import os
+import warnings
+
+# Suppress werkzeug production warning
+warnings.filterwarnings('ignore', message='.*Werkzeug.*production.*')
 
 def create_app():
     """Application factory pattern for Flask app"""
@@ -48,11 +52,11 @@ def create_app():
 if __name__ == '__main__':
     app, socketio = create_app()
     print("🚀 LiveTranslate server starting...")
-    print(f"📡 Backend running on http://{Config.SERVER_HOST}:{Config.SERVER_PORT}")
-    print(f"🌐 Frontend should connect to: http://localhost:{Config.SERVER_PORT}")
+    print(f"📡 Backend running on {Config.SERVER_HOST}:{Config.SERVER_PORT}")
     socketio.run(
         app,
         host=Config.SERVER_HOST,
         port=Config.SERVER_PORT,
-        debug=Config.DEBUG
+        debug=Config.DEBUG,
+        allow_unsafe_werkzeug=True
     )
